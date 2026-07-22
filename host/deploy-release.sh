@@ -140,6 +140,10 @@ trap - EXIT HUP INT TERM
 compose() {
   target_dir="$1"
   shift
+  APP_DEPLOY_ROOT="$deploy_root" \
+  APP_CONFIG_DIR="$config_dir" \
+  APP_RUNTIME_ENV_FILE="$runtime_env" \
+  APP_SECRETS_DIR="$secrets_dir" \
   "$docker_bin" compose \
     --project-name "$app_name" \
     --env-file "$runtime_env" \

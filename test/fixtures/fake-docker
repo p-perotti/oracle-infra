@@ -2,7 +2,7 @@
 set -eu
 
 log_file="${FAKE_DOCKER_LOG:?}"
-printf '%s\n' "$*" >>"$log_file"
+printf 'env.APP_SECRETS_DIR=%s %s\n' "${APP_SECRETS_DIR:-unset}" "$*" >>"$log_file"
 
 case "${1:-}" in
   login)

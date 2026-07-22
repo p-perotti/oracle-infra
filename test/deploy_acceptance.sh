@@ -216,6 +216,7 @@ test_app_name_derives_isolated_directories() {
 
   assert_file_equals r1 "$work_root/derived/srv/fixture/state/active-release"
   [[ -d "$work_root/derived/etc/fixture/secrets" ]] || fail 'derived secrets directory changed'
+  assert_contains "env.APP_SECRETS_DIR=$work_root/derived/etc/fixture/secrets" "$work_root/derived/docker.log"
   assert_contains 'RESULT outcome=promoted app=fixture release=r1 previous=none' "$output"
 }
 
