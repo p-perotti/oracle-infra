@@ -13,4 +13,5 @@ runs:
       shell: bash
       env:
         MATERIALIZE_DESTINATION: ${{ inputs.destination }}
-      run: "$GITHUB_ACTION_PATH/materialize.sh" "$MATERIALIZE_DESTINATION"
+      run: |
+        "$GITHUB_ACTION_PATH/materialize.sh" "$MATERIALIZE_DESTINATION"

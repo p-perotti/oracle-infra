@@ -30,6 +30,16 @@ jobs:
       - name: Verify private action materialization
         run: bash test/materialize_action.sh
 
+      - name: Exercise the composite action manifest
+        uses: ./.github/actions/materialize
+        with:
+          destination: .verified-materialization
+
+      - name: Compare the composite action output
+        run: |
+          cmp workflow/dispatch.sh .verified-materialization/workflow/dispatch.sh
+          cmp host/deploy-release.sh .verified-materialization/host/deploy-release.sh
+
       - name: Exercise the reusable seam
         run: bash test/deploy_acceptance.sh
 
