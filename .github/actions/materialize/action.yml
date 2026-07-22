@@ -1,0 +1,16 @@
+name: Materialize pinned delivery mechanism
+description: Copies the versioned dispatcher and host entrypoint into the caller workspace
+
+inputs:
+  destination:
+    description: Relative workspace path receiving the delivery mechanism
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Materialize delivery scripts
+      shell: bash
+      env:
+        MATERIALIZE_DESTINATION: ${{ inputs.destination }}
+      run: "$GITHUB_ACTION_PATH/materialize.sh" "$MATERIALIZE_DESTINATION"

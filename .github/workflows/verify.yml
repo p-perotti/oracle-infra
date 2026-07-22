@@ -22,9 +22,13 @@ jobs:
       - name: Validate shell syntax
         run: |
           sh -n host/deploy-release.sh workflow/dispatch.sh test/fixtures/caller \
-            test/fixtures/fake-curl test/fixtures/fake-docker test/fixtures/smoke-test
-          bash -n host/bootstrap-lock.sh test/deploy_acceptance.sh test/workflow_contract.sh \
+            test/fixtures/fake-curl test/fixtures/fake-docker test/fixtures/smoke-test \
+            .github/actions/materialize/materialize.sh
+          bash -n host/bootstrap-lock.sh test/deploy_acceptance.sh test/workflow_contract.sh test/materialize_action.sh \
             edge/scripts/deploy-edge.sh edge/scripts/verify-edge.sh
+
+      - name: Verify private action materialization
+        run: bash test/materialize_action.sh
 
       - name: Exercise the reusable seam
         run: bash test/deploy_acceptance.sh
