@@ -1,0 +1,36 @@
+name: Verify delivery mechanism
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Verify caller to host contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate shell syntax
+        run: |
+          sh -n host/deploy-release.sh workflow/dispatch.sh test/fixtures/caller \
+            test/fixtures/fake-curl test/fixtures/fake-docker test/fixtures/smoke-test
+          bash -n host/bootstrap-lock.sh test/deploy_acceptance.sh test/workflow_contract.sh \
+            edge/scripts/deploy-edge.sh edge/scripts/verify-edge.sh
+
+      - name: Exercise the reusable seam
+        run: bash test/deploy_acceptance.sh
+
+      - name: Verify the reusable workflow interface
+        run: bash test/workflow_contract.sh
+
+      - name: Validate the shared edge definition
+        run: docker compose --file edge/compose.yaml config --quiet
