@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+log_file="${FAKE_DOCKER_LOG:?}"
+printf '%s\n' "$*" >>"$log_file"
+
+case "${1:-}" in
+  login)
+    cat >/dev/null
+    ;;
+  logout)
+    ;;
+  compose)
+    deployment_env=""
+    previous=""
+    for argument in "$@"; do
+      if [ "$previous" = "--env-file" ]; then
+        deployment_env="$argument"
+      fi
+      previous="$argument"
+    done
+    case " $* " in
+      *' up '*)
+        release_id="$(sed -n 's/^RELEASE_ID=//p' "$deployment_env")"
+        printf '%s\n' "$release_id" >"${FAKE_RUNNING_RELEASE_FILE:?}"
+        ;;
+    esac
+    ;;
+esac

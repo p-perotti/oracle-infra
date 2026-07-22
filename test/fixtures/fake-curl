@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+test -s "${FAKE_RUNNING_RELEASE_FILE:?}"
+running_release="$(cat "$FAKE_RUNNING_RELEASE_FILE")"
+for failed_release in ${FAKE_FAIL_SMOKE_RELEASES:-${FAKE_FAIL_SMOKE_RELEASE:-}}; do
+  test "$running_release" != "$failed_release" || exit 22
+done

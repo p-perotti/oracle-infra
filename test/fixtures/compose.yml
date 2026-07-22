@@ -1,0 +1,11 @@
+name: fixture
+
+services:
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE must be immutable}
+  worker:
+    image: ${WORKER_IMAGE:?WORKER_IMAGE must be immutable}
+
+volumes:
+  fixture_data:
+    name: fixture_data

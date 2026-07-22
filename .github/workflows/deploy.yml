@@ -1,0 +1,166 @@
+name: Deploy immutable Compose release
+
+on:
+  workflow_call:
+    inputs:
+      environment_name:
+        description: Existing deployment environment in the caller repository
+        required: true
+        type: string
+      artifact_name:
+        description: Artifact containing compose.yml, release.env, smoke-test, and product payload
+        required: true
+        type: string
+      app_name:
+        description: Lowercase application namespace used to derive /srv and /etc paths
+        required: true
+        type: string
+      release_id:
+        description: Immutable source release identifier
+        required: true
+        type: string
+      services:
+        description: Space-delimited application services promoted as one release
+        required: true
+        type: string
+      smoke_url:
+        description: Public HTTPS boundary validated after promotion and rollback
+        required: true
+        type: string
+      failure_mode:
+        description: Controlled drill mode (none, promotion, or rollback)
+        required: false
+        default: none
+        type: string
+      lock_timeout:
+        description: Maximum seconds spent waiting for the shared host lock
+        required: false
+        default: 300
+        type: number
+      health_timeout:
+        description: Maximum seconds Docker Compose waits for application health
+        required: false
+        default: 180
+        type: number
+      retention_count:
+        description: Number of recent release payloads retained per application
+        required: false
+        default: 5
+        type: number
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.app_name }} to ${{ inputs.environment_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ${{ inputs.environment_name }}
+    concurrency:
+      group: oracle-deploy-${{ github.repository }}-${{ inputs.environment_name }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out the pinned delivery mechanism
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .oracle-infra
+          persist-credentials: false
+
+      - name: Download the immutable product payload
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: release-package
+
+      - name: Extract the permission-preserving release payload
+        run: |
+          set -euo pipefail
+          test -f release-package/release.tgz
+          tar -tzf release-package/release.tgz >"$RUNNER_TEMP/release-members"
+          while IFS= read -r member; do
+            case "$member" in
+              /*|../*|*/../*|*/..) echo "Unsafe release member: $member" >&2; exit 65 ;;
+            esac
+          done <"$RUNNER_TEMP/release-members"
+          install -d -m 0700 release-payload
+          tar -xzf release-package/release.tgz --no-same-owner -C release-payload
+
+      - name: Configure pinned SSH transport
+        env:
+          DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ vars.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ vars.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+        run: |
+          set -eu
+          case "$DEPLOY_SSH_HOST" in *[!A-Za-z0-9.-]*|'') echo 'Invalid DEPLOY_SSH_HOST' >&2; exit 64;; esac
+          case "$DEPLOY_SSH_USER" in *[!A-Za-z0-9_-]*|'') echo 'Invalid DEPLOY_SSH_USER' >&2; exit 64;; esac
+          test -n "$DEPLOY_SSH_KNOWN_HOSTS"
+          test -n "$DEPLOY_SSH_PRIVATE_KEY"
+          install -d -m 0700 "$RUNNER_TEMP/oracle-infra-ssh"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" >"$RUNNER_TEMP/oracle-infra-ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" >"$RUNNER_TEMP/oracle-infra-ssh/known_hosts"
+          chmod 0600 "$RUNNER_TEMP/oracle-infra-ssh/deploy_key" "$RUNNER_TEMP/oracle-infra-ssh/known_hosts"
+          ssh-keygen -F "$DEPLOY_SSH_HOST" -f "$RUNNER_TEMP/oracle-infra-ssh/known_hosts" >/dev/null
+
+      - name: Promote through the common host entrypoint
+        id: promotion
+        env:
+          APP_NAME: ${{ inputs.app_name }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          RELEASE_SERVICES: ${{ inputs.services }}
+          RELEASE_SMOKE_URL: ${{ inputs.smoke_url }}
+          RELEASE_FAILURE_MODE: ${{ inputs.failure_mode }}
+          RELEASE_LOCK_TIMEOUT: ${{ inputs.lock_timeout }}
+          RELEASE_HEALTH_TIMEOUT: ${{ inputs.health_timeout }}
+          RELEASE_RETENTION_COUNT: ${{ inputs.retention_count }}
+          DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ vars.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_KEY_FILE: ${{ runner.temp }}/oracle-infra-ssh/deploy_key
+          DEPLOY_SSH_KNOWN_HOSTS_FILE: ${{ runner.temp }}/oracle-infra-ssh/known_hosts
+          GHCR_READ_USERNAME: ${{ github.actor }}
+          GHCR_READ_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          .oracle-infra/workflow/dispatch.sh \
+            --transport ssh \
+            --app-name "$APP_NAME" \
+            --release-id "$RELEASE_ID" \
+            --payload-dir release-payload \
+            --services "$RELEASE_SERVICES" \
+            --smoke-url "$RELEASE_SMOKE_URL" \
+            --failure-mode "$RELEASE_FAILURE_MODE" \
+            --lock-timeout "$RELEASE_LOCK_TIMEOUT" \
+            --health-timeout "$RELEASE_HEALTH_TIMEOUT" \
+            --retention-count "$RELEASE_RETENTION_COUNT" \
+            > >(tee deployment.log) 2>&1
+          status=$?
+          set -e
+          result="$(grep '^RESULT ' deployment.log | tail -1 || true)"
+          {
+            echo '### OCI deployment result'
+            echo
+            echo '```text'
+            printf '%s\n' "${result:-RESULT outcome=transport_failed app=$APP_NAME release=$RELEASE_ID}"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+          printf 'result=%s\n' "$result" >>"$GITHUB_OUTPUT"
+          exit "$status"
+
+      - name: Remove ephemeral registry credentials from the host
+        if: ${{ always() }}
+        env:
+          DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ vars.DEPLOY_SSH_USER }}
+        run: |
+          test -f "$RUNNER_TEMP/oracle-infra-ssh/deploy_key" || exit 0
+          ssh -i "$RUNNER_TEMP/oracle-infra-ssh/deploy_key" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$RUNNER_TEMP/oracle-infra-ssh/known_hosts" \
+            "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST" 'docker logout ghcr.io >/dev/null 2>&1 || true' || true

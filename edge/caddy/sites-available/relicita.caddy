@@ -1,0 +1,3 @@
+relicita.duckdns.org {
+	reverse_proxy relicita-web:3000
+}
