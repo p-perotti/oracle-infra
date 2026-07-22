@@ -13,6 +13,8 @@ fail() {
 
 for contract in \
   'workflow_call:' \
+  'DEPLOY_SSH_PRIVATE_KEY:' \
+  'required: true' \
   'environment_name:' \
   'environment_url:' \
   'artifact_name:' \

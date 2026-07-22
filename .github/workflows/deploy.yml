@@ -2,6 +2,10 @@ name: Deploy immutable Compose release
 
 on:
   workflow_call:
+    secrets:
+      DEPLOY_SSH_PRIVATE_KEY:
+        description: Dedicated SSH key stored as a repository or organization secret by the caller
+        required: true
     inputs:
       environment_name:
         description: Existing deployment environment in the caller repository

@@ -9,7 +9,8 @@ Cada produto continua proprietário de seu Compose, imagens, health checks, smok
 1. materializa o dispatcher e o entrypoint por uma action privada fixada por
    SHA, usando o token de instalação temporário fornecido pelo GitHub;
 2. baixa o artefato produzido pelos gates do caller;
-3. usa somente o environment do repositório consumidor para obter o transporte SSH;
+3. usa o environment do consumidor para as variables de destino e recebe a
+   chave por secret explícito do repositório consumidor;
 4. autentica o usuário remoto no GHCR com o token efêmero do job;
 5. transfere o payload e chama `host/deploy-release.sh`;
 6. mantém o lock exclusivo `/run/lock/oracle-infra-deploy.lock` de pull até smoke/rollback;
@@ -20,10 +21,11 @@ O entrypoint deriva `APP_DEPLOY_ROOT=/srv/<app>`, `APP_CONFIG_DIR=/etc/<app>`, `
 
 ## Contrato do caller
 
-O caller fixa `.github/workflows/deploy.yml` por SHA completo e concede `contents: read`, `actions: read` e `packages: read`. Os inputs obrigatórios são o nome do environment, nome da aplicação, identidade imutável da release, artefato, serviços promovíveis e URL HTTPS do smoke test. O job reutilizado declara o environment no contexto do repositório consumidor e lê diretamente:
+O caller fixa `.github/workflows/deploy.yml` por SHA completo e concede `contents: read`, `actions: read` e `packages: read`. Os inputs obrigatórios são o nome do environment, nome da aplicação, identidade imutável da release, artefato, serviços promovíveis e URL HTTPS do smoke test. O job reutilizado declara o environment de deployment e lê:
 
 - variables `DEPLOY_SSH_HOST`, `DEPLOY_SSH_USER` e `DEPLOY_SSH_KNOWN_HOSTS`;
-- secret `DEPLOY_SSH_PRIVATE_KEY`.
+- secret explícito `DEPLOY_SSH_PRIVATE_KEY`, armazenado no repositório ou na
+  organização consumidora.
 
 O GitHub não recebe segredos da aplicação. O artefato contém um único `release.tgz`, preservando permissões; dentro dele ficam `compose.yml`, `release.env`, um `smoke-test` executável e os demais arquivos de runtime do produto. `release.env` contém exatamente `RELEASE_ID` e uma ou mais variáveis terminadas em `_IMAGE`, sempre no formato `ghcr.io/...@sha256:<64 hex>`. O smoke test recebe a URL e a release esperada, devendo verificar a identidade pela fronteira pública.
 
@@ -43,6 +45,8 @@ jobs:
       release_id: ${{ github.sha }}
       services: web worker
       smoke_url: https://product.example/health
+    secrets:
+      DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
 ```
 
 ## Bootstrap do host
@@ -56,6 +60,11 @@ sudo host/bootstrap-lock.sh relicita-deploy gobrewery-deploy
 Para cada produto, crie `/srv/<app>` com propriedade do usuário dedicado e mantenha `/etc/<app>/runtime.env` e `/etc/<app>/secrets/` fora dos checkouts. O arquivo público de runtime deve ser `0640`; o diretório de segredos, `0750`; e cada segredo, `0640` ou mais restrito. A rede externa `edge` precisa existir, mas somente o serviço HTTP do produto participa dela.
 
 O repositório hospedador deve permitir acesso aos workflows por repositórios consumidores autorizados em **Settings → Actions → General → Access**. O caller deve apontar para um SHA integral, nunca para `master` ou tag mutável.
+
+`workflow_call` não consegue receber secrets pertencentes a environments do
+caller; essa é uma restrição da plataforma. Por isso as variables não sensíveis
+permanecem no environment `OCI`, enquanto a chave dedicada fica como secret do
+repositório consumidor e é passada nominalmente — nunca por `secrets: inherit`.
 
 Em um caller privado, `GITHUB_TOKEN` continua pertencendo ao caller e não pode
 ser usado por `actions/checkout` para ler este repositório. Por isso o workflow
