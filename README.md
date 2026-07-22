@@ -6,13 +6,15 @@ Infraestrutura compartilhada da máquina Oracle ARM que hospeda produtos indepen
 
 Cada produto continua proprietário de seu Compose, imagens, health checks, smoke test, banco, volumes, configuração de runtime e segredos. O `oracle-infra` recebe um artefato de release já formado e executa o mesmo contrato para promoção automática, redeploy, recuperação e exercícios controlados:
 
-1. baixa o artefato produzido pelos gates do caller;
-2. usa somente o environment do repositório consumidor para obter o transporte SSH;
-3. autentica o usuário remoto no GHCR com o token efêmero do job;
-4. transfere o payload e chama `host/deploy-release.sh`;
-5. mantém o lock exclusivo `/run/lock/oracle-infra-deploy.lock` de pull até smoke/rollback;
-6. promove todos os serviços de aplicação como uma release compatível; e
-7. remove a credencial efêmera do registry ao terminar.
+1. materializa o dispatcher e o entrypoint por uma action privada fixada por
+   SHA, usando o token de instalação temporário fornecido pelo GitHub;
+2. baixa o artefato produzido pelos gates do caller;
+3. usa somente o environment do repositório consumidor para obter o transporte SSH;
+4. autentica o usuário remoto no GHCR com o token efêmero do job;
+5. transfere o payload e chama `host/deploy-release.sh`;
+6. mantém o lock exclusivo `/run/lock/oracle-infra-deploy.lock` de pull até smoke/rollback;
+7. promove todos os serviços de aplicação como uma release compatível; e
+8. remove a credencial efêmera do registry ao terminar.
 
 O entrypoint deriva `APP_DEPLOY_ROOT=/srv/<app>`, `APP_CONFIG_DIR=/etc/<app>`, `APP_RUNTIME_ENV_FILE=/etc/<app>/runtime.env` e `APP_SECRETS_DIR=/etc/<app>/secrets` a partir de `APP_NAME`. Overrides existem apenas para testes ou migrações explícitas e nunca são exportados globalmente no host. As operações `deploy`, `redeploy` e `recovery` atravessam esse mesmo entrypoint; uma release existente só pode ser reutilizada quando o payload é idêntico.
 
@@ -54,6 +56,13 @@ sudo host/bootstrap-lock.sh relicita-deploy gobrewery-deploy
 Para cada produto, crie `/srv/<app>` com propriedade do usuário dedicado e mantenha `/etc/<app>/runtime.env` e `/etc/<app>/secrets/` fora dos checkouts. O arquivo público de runtime deve ser `0640`; o diretório de segredos, `0750`; e cada segredo, `0640` ou mais restrito. A rede externa `edge` precisa existir, mas somente o serviço HTTP do produto participa dela.
 
 O repositório hospedador deve permitir acesso aos workflows por repositórios consumidores autorizados em **Settings → Actions → General → Access**. O caller deve apontar para um SHA integral, nunca para `master` ou tag mutável.
+
+Em um caller privado, `GITHUB_TOKEN` continua pertencendo ao caller e não pode
+ser usado por `actions/checkout` para ler este repositório. Por isso o workflow
+comum obtém seus scripts por `.github/actions/materialize`, também pinada por
+SHA completo; o GitHub entrega essa action privada com um token de instalação
+somente-leitura e temporário. Callers públicos, por regra da plataforma, somente
+podem consumir workflows hospedados em repositórios públicos.
 
 ## Promoção, rollback e retenção
 

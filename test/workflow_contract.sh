@@ -24,8 +24,8 @@ for contract in \
   'cancel-in-progress: false' \
   'name: ${{ inputs.environment_name }}' \
   'url: ${{ inputs.environment_url }}' \
-  'repository: ${{ job.workflow_repository }}' \
-  'ref: ${{ job.workflow_sha }}' \
+  'p-perotti/oracle-infra/.github/actions/materialize@' \
+  'destination: .oracle-infra' \
   'DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}' \
   'DEPLOY_SSH_USER: ${{ vars.DEPLOY_SSH_USER }}' \
   'DEPLOY_SSH_KNOWN_HOSTS: ${{ vars.DEPLOY_SSH_KNOWN_HOSTS }}' \
@@ -38,6 +38,13 @@ for contract in \
   '$GITHUB_STEP_SUMMARY'; do
   grep -F -- "$contract" "$workflow" >/dev/null || fail "workflow is missing contract: $contract"
 done
+
+grep -Eq 'p-perotti/oracle-infra/\.github/actions/materialize@[0-9a-f]{40}' "$workflow" \
+  || fail 'private materializer action is not pinned by full SHA'
+
+if grep -F 'repository: ${{ job.workflow_repository }}' "$workflow" >/dev/null; then
+  fail 'called workflow still attempts checkout with the caller-scoped token'
+fi
 
 if grep -Eq 'secrets: inherit|OCI_(CLI|API|TENANCY)|PRODUCTION_SSH_|VM_(HOST|USER|SSH)' "$workflow"; then
   fail 'workflow contains inherited, control-plane, or legacy credentials'

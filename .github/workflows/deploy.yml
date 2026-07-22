@@ -74,13 +74,10 @@ jobs:
       group: oracle-deploy-${{ github.repository }}-${{ inputs.environment_name }}
       cancel-in-progress: false
     steps:
-      - name: Check out the pinned delivery mechanism
-        uses: actions/checkout@v6
+      - name: Materialize the pinned delivery mechanism
+        uses: p-perotti/oracle-infra/.github/actions/materialize@f63b6ee54b6065fecfbdf36e8896c33d5ddec952
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .oracle-infra
-          persist-credentials: false
+          destination: .oracle-infra
 
       - name: Download the immutable product payload
         uses: actions/download-artifact@v4
