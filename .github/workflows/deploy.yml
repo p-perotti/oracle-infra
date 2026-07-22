@@ -75,7 +75,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Materialize the pinned delivery mechanism
-        uses: p-perotti/oracle-infra/.github/actions/materialize@f63b6ee54b6065fecfbdf36e8896c33d5ddec952
+        uses: p-perotti/oracle-infra/.github/actions/materialize@516ddefa94ae5f03b41a3c7961d4502c87d52822
         with:
           destination: .oracle-infra
 
