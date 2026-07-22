@@ -7,6 +7,10 @@ on:
         description: Existing deployment environment in the caller repository
         required: true
         type: string
+      environment_url:
+        description: Public boundary recorded with the caller repository deployment
+        required: true
+        type: string
       artifact_name:
         description: Artifact containing compose.yml, release.env, smoke-test, and product payload
         required: true
@@ -65,6 +69,7 @@ jobs:
     timeout-minutes: 20
     environment:
       name: ${{ inputs.environment_name }}
+      url: ${{ inputs.environment_url }}
     concurrency:
       group: oracle-deploy-${{ github.repository }}-${{ inputs.environment_name }}
       cancel-in-progress: false

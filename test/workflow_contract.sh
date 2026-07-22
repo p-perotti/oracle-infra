@@ -14,6 +14,7 @@ fail() {
 for contract in \
   'workflow_call:' \
   'environment_name:' \
+  'environment_url:' \
   'artifact_name:' \
   'app_name:' \
   'release_id:' \
@@ -22,6 +23,7 @@ for contract in \
   'packages: read' \
   'cancel-in-progress: false' \
   'name: ${{ inputs.environment_name }}' \
+  'url: ${{ inputs.environment_url }}' \
   'repository: ${{ job.workflow_repository }}' \
   'ref: ${{ job.workflow_sha }}' \
   'DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}' \

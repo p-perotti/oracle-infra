@@ -35,6 +35,7 @@ jobs:
     uses: p-perotti/oracle-infra/.github/workflows/deploy.yml@0123456789abcdef0123456789abcdef01234567
     with:
       environment_name: OCI
+      environment_url: https://product.example
       artifact_name: product-release-${{ github.sha }}
       app_name: product
       release_id: ${{ github.sha }}
