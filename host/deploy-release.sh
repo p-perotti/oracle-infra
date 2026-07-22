@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "usage: deploy-release.sh --app-name NAME --release-id ID --payload-dir DIR --services 'SERVICE ...' --smoke-url URL [--failure-mode none|promotion|rollback] [--lock-timeout SECONDS] [--retention-count COUNT]" >&2
+  echo "usage: deploy-release.sh --app-name NAME --release-id ID --payload-dir DIR --services 'SERVICE ...' --smoke-url URL [--operation deploy|redeploy|recovery] [--failure-mode none|promotion|rollback] [--lock-timeout SECONDS] [--retention-count COUNT]" >&2
   exit 64
 }
 
@@ -15,6 +15,7 @@ lock_timeout=60
 health_timeout=180
 retention_count=5
 failure_mode=none
+operation=deploy
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -23,6 +24,7 @@ while [ "$#" -gt 0 ]; do
     --payload-dir) payload_dir="${2:-}"; shift 2 ;;
     --services) services="${2:-}"; shift 2 ;;
     --smoke-url) smoke_url="${2:-}"; shift 2 ;;
+    --operation) operation="${2:-}"; shift 2 ;;
     --failure-mode) failure_mode="${2:-}"; shift 2 ;;
     --lock-timeout) lock_timeout="${2:-}"; shift 2 ;;
     --health-timeout) health_timeout="${2:-}"; shift 2 ;;
@@ -41,6 +43,7 @@ case "$lock_timeout" in *[!0-9]*|'') usage ;; esac
 case "$health_timeout" in *[!0-9]*|'') usage ;; esac
 case "$retention_count" in *[!0-9]*|'') usage ;; esac
 case "$failure_mode" in none|promotion|rollback) ;; *) usage ;; esac
+case "$operation" in deploy|redeploy|recovery) ;; *) usage ;; esac
 [ "$retention_count" -ge 2 ] || usage
 test -n "$payload_dir" && test -n "$services" && test -n "$smoke_url" || usage
 for service in $services; do
@@ -99,21 +102,39 @@ if ! flock -x -w "$lock_timeout" 9; then
   exit 75
 fi
 
+filesystem_percent="${ORACLE_INFRA_FILESYSTEM_PERCENT:-}"
+if [ -z "$filesystem_percent" ]; then
+  filesystem_percent="$(df -P "$deploy_root" | awk 'NR == 2 { gsub(/%/, "", $5); print $5 }')"
+fi
+case "$filesystem_percent" in *[!0-9]*|'') echo 'Filesystem utilization is unavailable' >&2; exit 78;; esac
+if [ "$filesystem_percent" -ge 90 ]; then
+  echo "FILESYSTEM_BLOCKED app=$app_name used_percent=$filesystem_percent threshold=90" >&2
+  exit 78
+elif [ "$filesystem_percent" -ge 80 ]; then
+  echo "FILESYSTEM_WARNING app=$app_name used_percent=$filesystem_percent threshold=80" >&2
+elif [ "$filesystem_percent" -ge 70 ]; then
+  echo "FILESYSTEM_NOTICE app=$app_name used_percent=$filesystem_percent threshold=70" >&2
+fi
+
 previous_release=""
 if [ -s "$active_file" ]; then
   previous_release="$(tr -d '\r\n' <"$active_file")"
 fi
 
-if [ -e "$release_dir" ]; then
-  echo "Release already exists and cannot be overwritten: $release_id" >&2
-  exit 65
-fi
 temporary_release="$deploy_root/releases/.${release_id}.tmp.$$"
 trap 'rm -rf "$temporary_release"' EXIT HUP INT TERM
 mkdir -p "$temporary_release"
 cp -R "$payload_dir/." "$temporary_release/"
 mv "$temporary_release/release.env" "$temporary_release/deployment.env"
-mv "$temporary_release" "$release_dir"
+if [ -e "$release_dir" ]; then
+  if ! diff -qr "$temporary_release" "$release_dir" >/dev/null; then
+    echo "Release identity already exists with a different immutable payload: $release_id" >&2
+    exit 65
+  fi
+  rm -rf "$temporary_release"
+else
+  mv "$temporary_release" "$release_dir"
+fi
 trap - EXIT HUP INT TERM
 
 compose() {
@@ -208,13 +229,13 @@ if [ "$promotion_succeeded" = false ]; then
   fi
   echo "Promotion failed for $app_name release $release_id; starting rollback" >&2
   if rollback; then
-    printf 'RESULT outcome=rolled_back app=%s release=%s restored=%s\n' \
-      "$app_name" "$release_id" "$previous_release"
+    printf 'RESULT outcome=rolled_back app=%s release=%s restored=%s operation=%s\n' \
+      "$app_name" "$release_id" "$previous_release" "$operation"
     exit 1
   fi
   echo "CRITICAL: promotion and rollback both failed for app=$app_name release=$release_id" >&2
-  printf 'RESULT outcome=rollback_failed app=%s release=%s previous=%s\n' \
-    "$app_name" "$release_id" "${previous_release:-none}"
+  printf 'RESULT outcome=rollback_failed app=%s release=%s previous=%s operation=%s\n' \
+    "$app_name" "$release_id" "${previous_release:-none}" "$operation"
   exit 2
 fi
 
@@ -228,5 +249,5 @@ rm -f "$failed_file"
 activate "$release_id"
 retain_releases
 
-printf 'RESULT outcome=promoted app=%s release=%s previous=%s\n' \
-  "$app_name" "$release_id" "${previous_release:-none}"
+printf 'RESULT outcome=promoted app=%s release=%s previous=%s operation=%s\n' \
+  "$app_name" "$release_id" "${previous_release:-none}" "$operation"

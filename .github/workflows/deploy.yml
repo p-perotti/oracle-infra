@@ -27,6 +27,11 @@ on:
         description: Public HTTPS boundary validated after promotion and rollback
         required: true
         type: string
+      operation:
+        description: Common entrypoint operation (deploy, redeploy, or recovery)
+        required: false
+        default: deploy
+        type: string
       failure_mode:
         description: Controlled drill mode (none, promotion, or rollback)
         required: false
@@ -117,6 +122,7 @@ jobs:
           RELEASE_SERVICES: ${{ inputs.services }}
           RELEASE_SMOKE_URL: ${{ inputs.smoke_url }}
           RELEASE_FAILURE_MODE: ${{ inputs.failure_mode }}
+          RELEASE_OPERATION: ${{ inputs.operation }}
           RELEASE_LOCK_TIMEOUT: ${{ inputs.lock_timeout }}
           RELEASE_HEALTH_TIMEOUT: ${{ inputs.health_timeout }}
           RELEASE_RETENTION_COUNT: ${{ inputs.retention_count }}
@@ -135,6 +141,7 @@ jobs:
             --payload-dir release-payload \
             --services "$RELEASE_SERVICES" \
             --smoke-url "$RELEASE_SMOKE_URL" \
+            --operation "$RELEASE_OPERATION" \
             --failure-mode "$RELEASE_FAILURE_MODE" \
             --lock-timeout "$RELEASE_LOCK_TIMEOUT" \
             --health-timeout "$RELEASE_HEALTH_TIMEOUT" \

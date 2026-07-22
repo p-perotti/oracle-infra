@@ -14,7 +14,7 @@ Cada produto continua proprietário de seu Compose, imagens, health checks, smok
 6. promove todos os serviços de aplicação como uma release compatível; e
 7. remove a credencial efêmera do registry ao terminar.
 
-O entrypoint deriva `APP_DEPLOY_ROOT=/srv/<app>`, `APP_CONFIG_DIR=/etc/<app>`, `APP_RUNTIME_ENV_FILE=/etc/<app>/runtime.env` e `APP_SECRETS_DIR=/etc/<app>/secrets` a partir de `APP_NAME`. Overrides existem apenas para testes ou migrações explícitas e nunca são exportados globalmente no host.
+O entrypoint deriva `APP_DEPLOY_ROOT=/srv/<app>`, `APP_CONFIG_DIR=/etc/<app>`, `APP_RUNTIME_ENV_FILE=/etc/<app>/runtime.env` e `APP_SECRETS_DIR=/etc/<app>/secrets` a partir de `APP_NAME`. Overrides existem apenas para testes ou migrações explícitas e nunca são exportados globalmente no host. As operações `deploy`, `redeploy` e `recovery` atravessam esse mesmo entrypoint; uma release existente só pode ser reutilizada quando o payload é idêntico.
 
 ## Contrato do caller
 
@@ -56,7 +56,7 @@ O repositório hospedador deve permitir acesso aos workflows por repositórios c
 
 ## Promoção, rollback e retenção
 
-O estado de cada produto fica em `/srv/<app>/state`: `active-release`, `previous-release` e, após falha, `failed-release`. Pull, recriação seletiva, health checks, smoke test e rollback ocorrem sob o mesmo lock. Falha de promoção com rollback saudável retorna erro e `RESULT outcome=rolled_back`; falha também no rollback retorna código 2 e `RESULT outcome=rollback_failed`.
+O estado de cada produto fica em `/srv/<app>/state`: `active-release`, `previous-release` e, após falha, `failed-release`. Pull, recriação seletiva, health checks, smoke test e rollback ocorrem sob o mesmo lock. Falha de promoção com rollback saudável retorna erro e `RESULT outcome=rolled_back`; falha também no rollback retorna código 2 e `RESULT outcome=rollback_failed`. Antes do pull, ocupação de filesystem em 70% gera aviso inicial, 80% gera warning e 90% bloqueia a mutação; não há expansão automática.
 
 A retenção remove somente diretórios antigos sob `/srv/<app>/releases`. A release ativa e a anterior são preservadas. O mecanismo não executa `docker compose down`, prune global, remoção de volumes, limpeza da borda ou mutação de outro namespace.
 

@@ -51,6 +51,7 @@ run_fixture_caller() {
   ORACLE_INFRA_LOCK_FILE="$work_root/run/oracle-infra-deploy.lock" \
   ORACLE_INFRA_DOCKER_BIN="$repo_root/test/fixtures/fake-docker" \
   ORACLE_INFRA_CURL_BIN="$repo_root/test/fixtures/fake-curl" \
+  ORACLE_INFRA_FILESYSTEM_PERCENT="${FIXTURE_FILESYSTEM_PERCENT:-10}" \
   FAKE_DOCKER_LOG="$work_root/docker.log" \
   FAKE_SMOKE_LOG="$work_root/smoke.log" \
   FAKE_RUNNING_RELEASE_FILE="$work_root/running-release" \
@@ -60,6 +61,7 @@ run_fixture_caller() {
     --payload-dir "$payload" \
     --services "web worker" \
     --smoke-url https://fixture.example.test/health \
+    --operation "${FIXTURE_OPERATION:-deploy}" \
     --failure-mode "${FIXTURE_FAILURE_MODE:-none}" \
     --lock-timeout "${FIXTURE_LOCK_TIMEOUT:-2}" \
     --retention-count "${FIXTURE_RETENTION_COUNT:-5}" >"$output" 2>&1
@@ -241,6 +243,36 @@ test_controlled_failure_modes_use_the_same_entrypoint() {
   assert_contains 'RESULT outcome=rollback_failed app=fixture release=r3 previous=r1' "$output"
 }
 
+test_redeploy_reuses_the_immutable_release() {
+  local payload="$work_root/redeploy-r1" first="$work_root/redeploy-first.out" second="$work_root/redeploy-second.out"
+  rm -rf "$work_root/srv/fixture" "$work_root/etc/fixture" "$work_root/docker.log" "$work_root/running-release"
+  mkdir -p "$work_root/etc/fixture/secrets"
+  : >"$work_root/etc/fixture/runtime.env"
+  make_fixture_payload r1 "$payload"
+  run_fixture_caller r1 "$payload" "$first"
+  FIXTURE_OPERATION=redeploy run_fixture_caller r1 "$payload" "$second"
+
+  assert_file_equals r1 "$work_root/srv/fixture/state/active-release"
+  assert_contains 'RESULT outcome=promoted app=fixture release=r1 previous=r1 operation=redeploy' "$second"
+}
+
+test_filesystem_ceiling_blocks_before_docker_mutation() {
+  local payload="$work_root/filesystem-r1" output="$work_root/filesystem.out"
+  rm -rf "$work_root/srv/fixture" "$work_root/etc/fixture" "$work_root/docker.log" "$work_root/running-release"
+  mkdir -p "$work_root/etc/fixture/secrets"
+  : >"$work_root/etc/fixture/runtime.env"
+  make_fixture_payload r1 "$payload"
+
+  set +e
+  FIXTURE_FILESYSTEM_PERCENT=90 run_fixture_caller r1 "$payload" "$output"
+  local status=$?
+  set -e
+
+  [[ "$status" -eq 78 ]] || fail "filesystem ceiling returned $status"
+  assert_contains 'FILESYSTEM_BLOCKED app=fixture used_percent=90 threshold=90' "$output"
+  [[ ! -e "$work_root/docker.log" ]] || fail 'filesystem ceiling mutated Docker state'
+}
+
 test_healthy_multi_image_promotion
 printf 'PASS: healthy multi-image promotion through caller -> workflow -> host entrypoint\n'
 test_failed_promotion_rolls_back_whole_release
@@ -255,3 +287,7 @@ test_app_name_derives_isolated_directories
 printf 'PASS: APP_NAME derives isolated deploy and configuration directories\n'
 test_controlled_failure_modes_use_the_same_entrypoint
 printf 'PASS: controlled promotion and rollback drills use the common entrypoint\n'
+test_redeploy_reuses_the_immutable_release
+printf 'PASS: manual redeploy reuses the same immutable release and entrypoint\n'
+test_filesystem_ceiling_blocks_before_docker_mutation
+printf 'PASS: filesystem ceiling blocks before Docker mutation\n'

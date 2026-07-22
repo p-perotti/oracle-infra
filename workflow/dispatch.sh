@@ -27,6 +27,7 @@ case "$transport" in
     services=""
     smoke_url=""
     failure_mode="none"
+    operation="deploy"
     lock_timeout="300"
     health_timeout="180"
     retention_count="5"
@@ -37,6 +38,7 @@ case "$transport" in
         --payload-dir) payload_dir="${2:-}"; shift 2 ;;
         --services) services="${2:-}"; shift 2 ;;
         --smoke-url) smoke_url="${2:-}"; shift 2 ;;
+        --operation) operation="${2:-}"; shift 2 ;;
         --failure-mode) failure_mode="${2:-}"; shift 2 ;;
         --lock-timeout) lock_timeout="${2:-}"; shift 2 ;;
         --health-timeout) health_timeout="${2:-}"; shift 2 ;;
@@ -48,6 +50,7 @@ case "$transport" in
     case "$app_name" in *[!a-z0-9-]*|-*|*-|'') echo 'Invalid app name' >&2; exit 64;; esac
     case "$release_id" in *[!A-Za-z0-9._-]*|'') echo 'Invalid release ID' >&2; exit 64;; esac
     case "$failure_mode" in none|promotion|rollback) ;; *) echo 'Invalid failure mode' >&2; exit 64;; esac
+    case "$operation" in deploy|redeploy|recovery) ;; *) echo 'Invalid operation' >&2; exit 64;; esac
     case "$smoke_url" in https://*) ;; *) echo 'Smoke URL must use HTTPS' >&2; exit 64;; esac
     case "$smoke_url" in *[!A-Za-z0-9.:/_?\&=%~-]*) echo 'Smoke URL contains unsupported characters' >&2; exit 64;; esac
     for number in "$lock_timeout" "$health_timeout" "$retention_count"; do
@@ -94,6 +97,7 @@ case "$transport" in
         --payload-dir '$remote_root/payload' \
         --services '$services' \
         --smoke-url '$smoke_url' \
+        --operation '$operation' \
         --failure-mode '$failure_mode' \
         --lock-timeout '$lock_timeout' \
         --health-timeout '$health_timeout' \
