@@ -178,45 +178,47 @@ activate() {
 retain_releases() {
   removed_images_file="$(mktemp "$state_dir/.removed-images.XXXXXX")"
   protected_images_file="$(mktemp "$state_dir/.protected-images.XXXXXX")"
+  release_list_file="$(mktemp "$state_dir/.release-list.XXXXXX")"
+  image_list_file="$(mktemp "$state_dir/.image-list.XXXXXX")"
   kept=0
   find "$deploy_root/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' \
-    | sort -rn \
-    | while IFS=' ' read -r _modified candidate; do
-        case "$candidate" in *[!A-Za-z0-9._-]*|.*|'') continue ;; esac
-        kept=$((kept + 1))
-        if [ "$kept" -le "$retention_count" ] \
-          || [ "$candidate" = "$release_id" ] \
-          || [ "$candidate" = "$previous_release" ]; then
-          continue
-        fi
-        sed -n 's/^[A-Z0-9_]*_IMAGE=//p' \
-          "$deploy_root/releases/$candidate/deployment.env" >>"$removed_images_file"
-        rm -rf -- "$deploy_root/releases/$candidate"
-        printf 'RETENTION removed app=%s release=%s\n' "$app_name" "$candidate"
-      done
+    | sort -rn >"$release_list_file"
+  while IFS=' ' read -r _modified candidate; do
+    case "$candidate" in *[!A-Za-z0-9._-]*|.*|'') continue ;; esac
+    kept=$((kept + 1))
+    if [ "$kept" -le "$retention_count" ] \
+      || [ "$candidate" = "$release_id" ] \
+      || [ "$candidate" = "$previous_release" ]; then
+      continue
+    fi
+    sed -n 's/^[A-Z0-9_]*_IMAGE=//p' \
+      "$deploy_root/releases/$candidate/deployment.env" >>"$removed_images_file"
+    rm -rf -- "$deploy_root/releases/$candidate"
+    printf 'RETENTION removed app=%s release=%s\n' "$app_name" "$candidate"
+  done <"$release_list_file"
 
   find "$deploy_root/releases" -mindepth 2 -maxdepth 2 \
-    -name deployment.env -type f -print \
-    | while IFS= read -r manifest; do
-        sed -n 's/^[A-Z0-9_]*_IMAGE=//p' "$manifest"
-      done \
-    | sort -u >"$protected_images_file"
+    -name deployment.env -type f -print >"$release_list_file"
+  while IFS= read -r manifest; do
+    sed -n 's/^[A-Z0-9_]*_IMAGE=//p' "$manifest"
+  done <"$release_list_file" | sort -u >"$protected_images_file"
 
-  sort -u "$removed_images_file" \
-    | while IFS= read -r image; do
-        test -n "$image" || continue
-        if grep -F -x -- "$image" "$protected_images_file" >/dev/null; then
-          continue
-        fi
-        if "$docker_bin" image rm "$image"; then
-          printf 'IMAGE_RETENTION removed app=%s image=%s\n' "$app_name" "$image"
-        else
-          printf 'IMAGE_RETENTION preserved app=%s image=%s reason=in-use-or-removal-failed\n' \
-            "$app_name" "$image" >&2
-        fi
-      done
+  sort -u "$removed_images_file" >"$image_list_file"
+  while IFS= read -r image; do
+    test -n "$image" || continue
+    if grep -F -x -- "$image" "$protected_images_file" >/dev/null; then
+      continue
+    fi
+    if "$docker_bin" image rm "$image"; then
+      printf 'IMAGE_RETENTION removed app=%s image=%s\n' "$app_name" "$image"
+    else
+      printf 'IMAGE_RETENTION preserved app=%s image=%s reason=in-use-or-removal-failed\n' \
+        "$app_name" "$image" >&2
+    fi
+  done <"$image_list_file"
 
-  rm -f "$removed_images_file" "$protected_images_file"
+  rm -f "$removed_images_file" "$protected_images_file" \
+    "$release_list_file" "$image_list_file"
 }
 
 rollback() {
