@@ -54,7 +54,7 @@ jobs:
 Como root, prepare o lock compartilhado uma vez e reconecte as sessões dos usuários de deploy para atualizar seus grupos:
 
 ```sh
-sudo host/bootstrap-lock.sh relicita-deploy gobrewery-deploy
+sudo host/bootstrap-lock.sh app-a-deploy app-b-deploy
 ```
 
 Para cada produto, crie `/srv/<app>` com propriedade do usuário dedicado e mantenha `/etc/<app>/runtime.env` e `/etc/<app>/secrets/` fora dos checkouts. O arquivo público de runtime deve ser `0640`; o diretório de segredos, `0750`; e cada segredo, `0640` ou mais restrito. A rede externa `edge` precisa existir, mas somente o serviço HTTP do produto participa dela.

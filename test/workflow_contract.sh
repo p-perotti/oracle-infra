@@ -3,6 +3,9 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workflow="$repo_root/.github/workflows/deploy.yml"
+verify_workflow="$repo_root/.github/workflows/verify.yml"
+download_artifact_sha=d3f86a106a0bac45b974a628896c90dbdf5c8093
+checkout_sha=d23441a48e516b6c34aea4fa41551a30e30af803
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -33,7 +36,7 @@ for contract in \
   'DEPLOY_SSH_KNOWN_HOSTS: ${{ vars.DEPLOY_SSH_KNOWN_HOSTS }}' \
   'DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}' \
   'GHCR_READ_TOKEN: ${{ github.token }}' \
-  'actions/download-artifact@v4' \
+  "actions/download-artifact@$download_artifact_sha" \
   'release-package/release.tgz' \
   'tar -xzf release-package/release.tgz' \
   'workflow/dispatch.sh' \
@@ -43,6 +46,13 @@ done
 
 grep -Eq 'p-perotti/oracle-infra/\.github/actions/materialize@[0-9a-f]{40}' "$workflow" \
   || fail 'private materializer action is not pinned by full SHA'
+
+grep -F "actions/checkout@$checkout_sha" "$verify_workflow" >/dev/null \
+  || fail 'checkout action is not pinned to the reviewed full SHA'
+
+if grep -REq 'uses:[[:space:]]+actions/[^@]+@v[0-9]+' "$repo_root/.github/workflows"; then
+  fail 'an external action still uses a mutable major-version tag'
+fi
 
 if grep -F 'repository: ${{ job.workflow_repository }}' "$workflow" >/dev/null; then
   fail 'called workflow still attempts checkout with the caller-scoped token'
