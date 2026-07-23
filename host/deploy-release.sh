@@ -55,6 +55,7 @@ for service in $services; do
 done
 
 deploy_root="${APP_DEPLOY_ROOT:-${ORACLE_INFRA_SRV_ROOT:-/srv}/$app_name}"
+namespace_root="${ORACLE_INFRA_SRV_ROOT:-$(dirname "$deploy_root")}"
 config_dir="${APP_CONFIG_DIR:-${ORACLE_INFRA_ETC_ROOT:-/etc}/$app_name}"
 runtime_env="${APP_RUNTIME_ENV_FILE:-$config_dir/runtime.env}"
 secrets_dir="${APP_SECRETS_DIR:-$config_dir/secrets}"
@@ -167,6 +168,8 @@ activate() {
 }
 
 retain_releases() {
+  removed_images_file="$(mktemp "$state_dir/.removed-images.XXXXXX")"
+  protected_images_file="$(mktemp "$state_dir/.protected-images.XXXXXX")"
   kept=0
   find "$deploy_root/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' \
     | sort -rn \
@@ -178,9 +181,33 @@ retain_releases() {
           || [ "$candidate" = "$previous_release" ]; then
           continue
         fi
+        sed -n 's/^[A-Z0-9_]*_IMAGE=//p' \
+          "$deploy_root/releases/$candidate/deployment.env" >>"$removed_images_file"
         rm -rf -- "$deploy_root/releases/$candidate"
         printf 'RETENTION removed app=%s release=%s\n' "$app_name" "$candidate"
       done
+
+  find "$namespace_root" -path '*/releases/*/deployment.env' -type f -print \
+    | while IFS= read -r manifest; do
+        sed -n 's/^[A-Z0-9_]*_IMAGE=//p' "$manifest"
+      done \
+    | sort -u >"$protected_images_file"
+
+  sort -u "$removed_images_file" \
+    | while IFS= read -r image; do
+        test -n "$image" || continue
+        if grep -F -x -- "$image" "$protected_images_file" >/dev/null; then
+          continue
+        fi
+        if "$docker_bin" image rm "$image"; then
+          printf 'IMAGE_RETENTION removed app=%s image=%s\n' "$app_name" "$image"
+        else
+          printf 'IMAGE_RETENTION preserved app=%s image=%s reason=in-use-or-removal-failed\n' \
+            "$app_name" "$image" >&2
+        fi
+      done
+
+  rm -f "$removed_images_file" "$protected_images_file"
 }
 
 rollback() {

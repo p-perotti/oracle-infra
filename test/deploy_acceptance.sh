@@ -187,11 +187,26 @@ test_retention_is_scoped_to_inactive_app_releases() {
   : >"$work_root/etc/fixture/runtime.env"
   printf 'other-resource\n' >"$work_root/srv/fixture/shared/keep"
   printf 'persistent-data\n' >"$work_root/persistent/data"
+  mkdir -p "$work_root/srv/other/releases/retained"
+  cat >"$work_root/srv/other/releases/retained/deployment.env" <<'EOF'
+RELEASE_ID=retained
+OTHER_IMAGE=ghcr.io/example/fixture-web@sha256:1111111111111111111111111111111111111111111111111111111111111111
+EOF
 
   for release in r1 r2 r3 r4; do
     payload="$work_root/retention-$release"
     output="$work_root/retention-$release.out"
     make_fixture_payload "$release" "$payload"
+    case "$release" in
+      r1) web=1; worker=a ;;
+      r2) web=2; worker=b ;;
+      r3) web=3; worker=c ;;
+      r4) web=4; worker=d ;;
+    esac
+    sed -i \
+      -e "s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/$(printf '%0.s'"$web" {1..64})/" \
+      -e "s/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/$(printf '%0.s'"$worker" {1..64})/" \
+      "$payload/release.env"
     FIXTURE_RETENTION_COUNT=2 run_fixture_caller "$release" "$payload" "$output"
   done
 
@@ -201,6 +216,12 @@ test_retention_is_scoped_to_inactive_app_releases() {
   [[ -d "$work_root/srv/fixture/releases/r4" ]] || fail 'active release r4 was removed'
   assert_file_equals other-resource "$work_root/srv/fixture/shared/keep"
   assert_file_equals persistent-data "$work_root/persistent/data"
+  assert_contains 'image rm ghcr.io/example/fixture-worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$work_root/docker.log"
+  assert_contains 'image rm ghcr.io/example/fixture-web@sha256:2222222222222222222222222222222222222222222222222222222222222222' "$work_root/docker.log"
+  assert_contains 'image rm ghcr.io/example/fixture-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$work_root/docker.log"
+  if grep -F 'image rm ghcr.io/example/fixture-web@sha256:1111111111111111111111111111111111111111111111111111111111111111' "$work_root/docker.log"; then
+    fail 'retention removed an image referenced by another app'
+  fi
   if grep -Eq '(^| )(down|volume|system prune|image prune)( |$)' "$work_root/docker.log"; then
     fail 'retention invoked destructive Docker cleanup'
   fi
@@ -283,7 +304,7 @@ printf 'PASS: rollback failure is explicit and preserves active release identity
 test_lock_contention_times_out_without_mutation
 printf 'PASS: host-wide lock contention times out without mutation\n'
 test_retention_is_scoped_to_inactive_app_releases
-printf 'PASS: retention removes only inactive releases in the app namespace\n'
+printf 'PASS: retention removes only inactive releases and globally unreferenced app images\n'
 test_app_name_derives_isolated_directories
 printf 'PASS: APP_NAME derives isolated deploy and configuration directories\n'
 test_controlled_failure_modes_use_the_same_entrypoint

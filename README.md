@@ -78,7 +78,13 @@ podem consumir workflows hospedados em repositórios públicos.
 
 O estado de cada produto fica em `/srv/<app>/state`: `active-release`, `previous-release` e, após falha, `failed-release`. Pull, recriação seletiva, health checks, smoke test e rollback ocorrem sob o mesmo lock. Falha de promoção com rollback saudável retorna erro e `RESULT outcome=rolled_back`; falha também no rollback retorna código 2 e `RESULT outcome=rollback_failed`. Antes do pull, ocupação de filesystem em 70% gera aviso inicial, 80% gera warning e 90% bloqueia a mutação; não há expansão automática.
 
-A retenção remove somente diretórios antigos sob `/srv/<app>/releases`. A release ativa e a anterior são preservadas. O mecanismo não executa `docker compose down`, prune global, remoção de volumes, limpeza da borda ou mutação de outro namespace.
+A retenção remove somente diretórios antigos sob `/srv/<app>/releases`. A
+release ativa e a anterior são preservadas. Para cada manifest removido, o
+mecanismo tenta remover pelo digest exato somente as imagens que deixaram de ser
+referenciadas por qualquer release retida em `/srv`; imagens em uso são
+preservadas pelo próprio Docker e a limpeza nunca usa `--force`. O mecanismo não
+executa `docker compose down`, prune global, remoção de volumes, limpeza da borda
+ou mutação de outro namespace.
 
 ## Borda compartilhada
 
