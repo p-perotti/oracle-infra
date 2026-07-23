@@ -81,10 +81,12 @@ O estado de cada produto fica em `/srv/<app>/state`: `active-release`, `previous
 A retenção remove somente diretórios antigos sob `/srv/<app>/releases`. A
 release ativa e a anterior são preservadas. Para cada manifest removido, o
 mecanismo tenta remover pelo digest exato somente as imagens que deixaram de ser
-referenciadas por qualquer release retida em `/srv`; imagens em uso são
-preservadas pelo próprio Docker e a limpeza nunca usa `--force`. O mecanismo não
-executa `docker compose down`, prune global, remoção de volumes, limpeza da borda
-ou mutação de outro namespace.
+referenciadas por qualquer release retida do mesmo produto. O basename de cada
+repositório de imagem deve ser `<app>` ou `<app>-*`, impedindo que um manifest
+reivindique imagens do namespace de outro produto. Imagens em uso são preservadas
+pelo próprio Docker e a limpeza nunca usa `--force`. O mecanismo não executa
+`docker compose down`, prune global, remoção de volumes, limpeza da borda ou
+mutação de outro namespace.
 
 ## Borda compartilhada
 

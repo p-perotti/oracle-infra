@@ -187,12 +187,6 @@ test_retention_is_scoped_to_inactive_app_releases() {
   : >"$work_root/etc/fixture/runtime.env"
   printf 'other-resource\n' >"$work_root/srv/fixture/shared/keep"
   printf 'persistent-data\n' >"$work_root/persistent/data"
-  mkdir -p "$work_root/srv/other/releases/retained"
-  cat >"$work_root/srv/other/releases/retained/deployment.env" <<'EOF'
-RELEASE_ID=retained
-OTHER_IMAGE=ghcr.io/example/fixture-web@sha256:1111111111111111111111111111111111111111111111111111111111111111
-EOF
-
   for release in r1 r2 r3 r4; do
     payload="$work_root/retention-$release"
     output="$work_root/retention-$release.out"
@@ -216,15 +210,31 @@ EOF
   [[ -d "$work_root/srv/fixture/releases/r4" ]] || fail 'active release r4 was removed'
   assert_file_equals other-resource "$work_root/srv/fixture/shared/keep"
   assert_file_equals persistent-data "$work_root/persistent/data"
+  assert_contains 'image rm ghcr.io/example/fixture-web@sha256:1111111111111111111111111111111111111111111111111111111111111111' "$work_root/docker.log"
   assert_contains 'image rm ghcr.io/example/fixture-worker@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$work_root/docker.log"
   assert_contains 'image rm ghcr.io/example/fixture-web@sha256:2222222222222222222222222222222222222222222222222222222222222222' "$work_root/docker.log"
   assert_contains 'image rm ghcr.io/example/fixture-worker@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$work_root/docker.log"
-  if grep -F 'image rm ghcr.io/example/fixture-web@sha256:1111111111111111111111111111111111111111111111111111111111111111' "$work_root/docker.log"; then
-    fail 'retention removed an image referenced by another app'
-  fi
   if grep -Eq '(^| )(down|volume|system prune|image prune)( |$)' "$work_root/docker.log"; then
     fail 'retention invoked destructive Docker cleanup'
   fi
+}
+
+test_release_rejects_another_app_image_namespace() {
+  local payload="$work_root/cross-namespace-r1" output="$work_root/cross-namespace.out"
+  rm -rf "$work_root/srv/fixture" "$work_root/etc/fixture" "$work_root/docker.log" "$work_root/running-release"
+  mkdir -p "$work_root/etc/fixture/secrets"
+  : >"$work_root/etc/fixture/runtime.env"
+  make_fixture_payload r1 "$payload"
+  sed -i 's/fixture-web/shared-web/' "$payload/release.env"
+
+  set +e
+  run_fixture_caller r1 "$payload" "$output"
+  local status=$?
+  set -e
+
+  [[ "$status" -eq 65 ]] || fail "cross-namespace image returned $status"
+  assert_contains 'outside the fixture repository namespace' "$output"
+  [[ ! -e "$work_root/docker.log" ]] || fail 'cross-namespace image mutated Docker state'
 }
 
 test_app_name_derives_isolated_directories() {
@@ -304,7 +314,9 @@ printf 'PASS: rollback failure is explicit and preserves active release identity
 test_lock_contention_times_out_without_mutation
 printf 'PASS: host-wide lock contention times out without mutation\n'
 test_retention_is_scoped_to_inactive_app_releases
-printf 'PASS: retention removes only inactive releases and globally unreferenced app images\n'
+printf 'PASS: retention removes only inactive releases and unreferenced images in the app namespace\n'
+test_release_rejects_another_app_image_namespace
+printf 'PASS: release manifests cannot claim another app image namespace\n'
 test_app_name_derives_isolated_directories
 printf 'PASS: APP_NAME derives isolated deploy and configuration directories\n'
 test_controlled_failure_modes_use_the_same_entrypoint

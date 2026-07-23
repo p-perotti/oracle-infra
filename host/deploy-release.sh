@@ -55,7 +55,6 @@ for service in $services; do
 done
 
 deploy_root="${APP_DEPLOY_ROOT:-${ORACLE_INFRA_SRV_ROOT:-/srv}/$app_name}"
-namespace_root="${ORACLE_INFRA_SRV_ROOT:-$(dirname "$deploy_root")}"
 config_dir="${APP_CONFIG_DIR:-${ORACLE_INFRA_ETC_ROOT:-/etc}/$app_name}"
 runtime_env="${APP_RUNTIME_ENV_FILE:-$config_dir/runtime.env}"
 secrets_dir="${APP_SECRETS_DIR:-$config_dir/secrets}"
@@ -84,6 +83,15 @@ while IFS='=' read -r key value; do
       case "$value" in
         ghcr.io/*@sha256:*) ;;
         *) echo "Image $key is not an immutable GHCR digest" >&2; exit 65 ;;
+      esac
+      repository="${value%@sha256:*}"
+      image_name="${repository##*/}"
+      case "$image_name" in
+        "$app_name"|"$app_name"-*) ;;
+        *)
+          echo "Image $key is outside the $app_name repository namespace" >&2
+          exit 65
+          ;;
       esac
       digest="${value##*@sha256:}"
       case "$digest" in *[!0-9a-f]*|'') echo "Image $key has a malformed digest" >&2; exit 65 ;; esac
@@ -187,7 +195,8 @@ retain_releases() {
         printf 'RETENTION removed app=%s release=%s\n' "$app_name" "$candidate"
       done
 
-  find "$namespace_root" -path '*/releases/*/deployment.env' -type f -print \
+  find "$deploy_root/releases" -mindepth 2 -maxdepth 2 \
+    -name deployment.env -type f -print \
     | while IFS= read -r manifest; do
         sed -n 's/^[A-Z0-9_]*_IMAGE=//p' "$manifest"
       done \
