@@ -1,0 +1,17 @@
+[Unit]
+Description=Update shared Oracle infrastructure DuckDNS records
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/oracle-infra-update-duckdns
+User=root
+Group=root
+TimeoutStartSec=45s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/etc/oracle-infra

@@ -45,7 +45,7 @@ for contract in \
 done
 
 grep -Eq 'p-perotti/oracle-infra/\.github/actions/materialize@[0-9a-f]{40}' "$workflow" \
-  || fail 'private materializer action is not pinned by full SHA'
+  || fail 'materializer action is not pinned by full SHA'
 
 grep -F "actions/checkout@$checkout_sha" "$verify_workflow" >/dev/null \
   || fail 'checkout action is not pinned to the reviewed full SHA'

@@ -25,9 +25,10 @@ jobs:
             test/fixtures/fake-curl test/fixtures/fake-docker test/fixtures/smoke-test \
             .github/actions/materialize/materialize.sh
           bash -n host/bootstrap-lock.sh test/deploy_acceptance.sh test/workflow_contract.sh test/materialize_action.sh \
-            edge/scripts/deploy-edge.sh edge/scripts/verify-edge.sh
+            test/duckdns_contract.sh edge/scripts/deploy-edge.sh edge/scripts/verify-edge.sh \
+            edge/duckdns/update-duckdns.sh
 
-      - name: Verify private action materialization
+      - name: Verify public action materialization
         run: bash test/materialize_action.sh
 
       - name: Exercise the composite action manifest
@@ -45,6 +46,9 @@ jobs:
 
       - name: Verify the reusable workflow interface
         run: bash test/workflow_contract.sh
+
+      - name: Verify shared DuckDNS updater
+        run: bash test/duckdns_contract.sh
 
       - name: Validate the shared edge definition
         run: docker compose --file edge/compose.yaml config --quiet

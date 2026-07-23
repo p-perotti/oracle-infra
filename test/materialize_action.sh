@@ -20,4 +20,4 @@ if "$repo_root/.github/actions/materialize/materialize.sh" ../outside >/dev/null
   exit 1
 fi
 
-echo 'PASS: private action materializes the exact pinned mechanism'
+echo 'PASS: public action materializes the exact pinned mechanism'

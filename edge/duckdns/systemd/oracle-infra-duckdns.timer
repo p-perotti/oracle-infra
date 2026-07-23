@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh shared Oracle infrastructure DuckDNS records every five minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=15s
+RandomizedDelaySec=15s
+Unit=oracle-infra-duckdns.service
+
+[Install]
+WantedBy=timers.target
